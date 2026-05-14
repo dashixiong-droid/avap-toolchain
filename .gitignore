@@ -5,5 +5,23 @@ __pycache__/
 *.egg-info/
 dist/
 build/
-test_*
 *.tmp
+
+# Godot 编译产物
+godot/.sconsign.dblite
+godot/src/*.os
+godot/addons/avap/lib/
+
+# 测试素材和 web 测试产物
+examples/output/
+examples/web_test/output/
+examples/web_test/perf.html
+examples/web_test/perf.js
+examples/web_test/offscreen.html
+examples/web_test/offscreen.js
+examples/web_test/test.js
+examples/web_test/index.html
+examples/web_test/style.css
+examples/web_test/chain_test.html
+examples/web_test/chain_test.js
+examples/webgl2_test.html

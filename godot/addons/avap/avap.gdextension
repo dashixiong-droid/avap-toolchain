@@ -1,0 +1,11 @@
+[configuration]
+
+entry_symbol = "avap_library_init"
+compatibility_minimum = 4.3
+reloadable = true
+
+[libraries]
+
+macos.editor = "res://addons/avap/lib/libavap.macos.editor"
+macos.template_debug = "res://addons/avap/lib/libavap.macos.template_debug"
+macos.template_release = "res://addons/avap/lib/libavap.macos.template_release"

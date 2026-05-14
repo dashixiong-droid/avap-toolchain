@@ -1,0 +1,18 @@
+; Engine configuration file.
+; It's best edited using the editor UI and not directly,
+; but it can also be edited via script.
+
+[application]
+
+config/name="AVAP Test"
+run/main_scene="res://test_scene.tscn"
+
+[autoload]
+
+AVAPCache="*res://addons/avap/avap_cache.gd"
+
+[godot]
+
+[rendering]
+
+renderer/rendering_method="gl_compatibility"
