@@ -1,0 +1,23 @@
+; Engine configuration file.
+; It's best edited using the editor UI and not directly,
+; but it can also be edited via script.
+
+[application]
+
+config/name="AVAP WebGL2 Test"
+run/main_scene="res://main.tscn"
+config/features=PackedStringArray("4.6")
+
+[autoload]
+
+AVAPCache="*res://addons/avap/avap_cache_webgl2.gd"
+
+[display]
+
+window/size/viewport_width=960
+window/size/viewport_height=640
+window/stretch/mode="canvas_items"
+
+[rendering]
+
+renderer/rendering_method="gl_compatibility"

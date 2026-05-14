@@ -1,0 +1,150 @@
+{
+  "version": 1,
+  "atlases": [
+    {
+      "index": 0,
+      "video_file": "atlas_000.webm",
+      "width": 1024,
+      "height": 1024,
+      "fps": 30,
+      "total_frames": 40,
+      "encode_options": {
+        "codec": "libvpx-vp9",
+        "pix_fmt": "yuva420p",
+        "crf": 25,
+        "speed": 0,
+        "row_mt": 1,
+        "threads": 4
+      },
+      "animations": {
+        "sparkle": {
+          "atlas_index": 0,
+          "start_frame": 0,
+          "end_frame": 11,
+          "rect": {
+            "x": 288,
+            "y": 520,
+            "w": 64,
+            "h": 64
+          },
+          "orig_size": {
+            "w": 64,
+            "h": 64
+          },
+          "frame_count": 12,
+          "fps": 30.0,
+          "original_name": "examples/assets/sparkle"
+        },
+        "slash": {
+          "atlas_index": 0,
+          "start_frame": 0,
+          "end_frame": 17,
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "w": 320,
+            "h": 320
+          },
+          "orig_size": {
+            "w": 320,
+            "h": 320
+          },
+          "frame_count": 18,
+          "fps": 30.0,
+          "original_name": "examples/assets/slash"
+        },
+        "shield": {
+          "atlas_index": 0,
+          "start_frame": 0,
+          "end_frame": 19,
+          "rect": {
+            "x": 0,
+            "y": 320,
+            "w": 288,
+            "h": 288
+          },
+          "orig_size": {
+            "w": 288,
+            "h": 288
+          },
+          "frame_count": 20,
+          "fps": 30.0,
+          "original_name": "examples/assets/shield"
+        },
+        "fire_ring": {
+          "atlas_index": 0,
+          "start_frame": 0,
+          "end_frame": 23,
+          "rect": {
+            "x": 320,
+            "y": 0,
+            "w": 192,
+            "h": 192
+          },
+          "orig_size": {
+            "w": 192,
+            "h": 192
+          },
+          "frame_count": 24,
+          "fps": 30.0,
+          "original_name": "examples/assets/fire_ring"
+        },
+        "explosion": {
+          "atlas_index": 0,
+          "start_frame": 0,
+          "end_frame": 29,
+          "rect": {
+            "x": 256,
+            "y": 608,
+            "w": 256,
+            "h": 256
+          },
+          "orig_size": {
+            "w": 256,
+            "h": 256
+          },
+          "frame_count": 30,
+          "fps": 30.0,
+          "original_name": "examples/assets/explosion"
+        },
+        "heal_effect": {
+          "atlas_index": 0,
+          "start_frame": 0,
+          "end_frame": 29,
+          "rect": {
+            "x": 288,
+            "y": 320,
+            "w": 200,
+            "h": 200
+          },
+          "orig_size": {
+            "w": 200,
+            "h": 200
+          },
+          "frame_count": 30,
+          "fps": 30.0,
+          "original_name": "examples/assets/heal_effect"
+        },
+        "aura_loop": {
+          "atlas_index": 0,
+          "start_frame": 0,
+          "end_frame": 39,
+          "rect": {
+            "x": 0,
+            "y": 608,
+            "w": 256,
+            "h": 256
+          },
+          "orig_size": {
+            "w": 256,
+            "h": 256
+          },
+          "frame_count": 40,
+          "fps": 30.0,
+          "original_name": "examples/assets/aura_loop"
+        }
+      },
+      "alpha_video_file": "atlas_000_alpha.webm"
+    }
+  ]
+}
