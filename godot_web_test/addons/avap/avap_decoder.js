@@ -103,27 +103,107 @@ function _releaseVideoEntry(filename, entry) {
 }
 
 // ── 帧提取 ────────────────────────────────────────
+// VP9 seek 在浏览器中不可靠，改用播放+逐帧抓取模式：
+// 先 seek 到起始帧前一帧（确保解码器状态正确），然后播放，
+// 每帧用 requestVideoFrameCallback（如果可用）或
+// 固定间隔 drawImage + getImageData 抓取。
 async function _extractFrames(video, startFrame, endFrame, fps, cropX, cropY, cropW, cropH) {
-  const frames = [];
+  const totalFrames = endFrame - startFrame + 1;
   const W = cropW || video.videoWidth;
   const H = cropH || video.videoHeight;
+  const videoW = video.videoWidth;
+  const videoH = video.videoHeight;
 
-  _ensureCanvas(video.videoWidth, video.videoHeight);
+  _ensureCanvas(videoW, videoH);
+
+  // 方案1: requestVideoFrameCallback（Chrome 94+）
+  if ('requestVideoFrameCallback' in HTMLVideoElement.prototype) {
+    return await _extractViaRVFC(video, startFrame, endFrame, fps, cropX, cropY, W, H);
+  }
+
+  // 方案2: seek + play 模式（兼容所有浏览器）
+  // VP9 seek 后需要播放至少一帧才能正确解码
+  const startTime = startFrame / fps;
+  const endTime = (endFrame + 1) / fps;  // 多播一帧确保最后一帧解码完成
+  const frameInterval = 1 / fps;
+
+  video.currentTime = startTime;
+  await _seekTo(video, startTime);
+
+  // 播放一小段让解码器预热
+  video.play();
+  await new Promise(r => setTimeout(r, 50));
   video.pause();
 
+  // 逐帧 seek + 等待解码
+  const frames = [];
   for (let f = startFrame; f <= endFrame; f++) {
     const time = f / fps;
+    video.currentTime = time;
     await _seekTo(video, time);
+
+    // 等一帧让浏览器完成解码渲染
+    await new Promise(r => requestAnimationFrame(r));
+
+    _offCtx.clearRect(0, 0, videoW, videoH);
     _offCtx.drawImage(video, 0, 0);
 
-    const imgData = (cropX > 0 || cropY > 0 || cropW > 0 || cropH > 0)
+    const imgData = (cropX > 0 || cropY > 0)
       ? _offCtx.getImageData(cropX, cropY, W, H)
       : _offCtx.getImageData(0, 0, W, H);
 
     frames.push(new Uint8Array(imgData.data.buffer));
   }
 
+  video.pause();
   return frames;
+}
+
+// requestVideoFrameCallback 方案：精确逐帧抓取
+async function _extractViaRVFC(video, startFrame, endFrame, fps, cropX, cropY, cropW, cropH) {
+  const totalFrames = endFrame - startFrame + 1;
+  const startTime = startFrame / fps;
+  const videoW = video.videoWidth;
+  const videoH = video.videoHeight;
+  const frames = [];
+
+  video.currentTime = startTime;
+  await _seekTo(video, startTime);
+  video.play();
+
+  let frameIdx = 0;
+  let lastMediaTime = -1;
+
+  return new Promise(resolve => {
+    function onFrame(now, metadata) {
+      // 防止重复帧
+      if (metadata.mediaTime === lastMediaTime) {
+        video.requestVideoFrameCallback(onFrame);
+        return;
+      }
+      lastMediaTime = metadata.mediaTime;
+
+      _offCtx.clearRect(0, 0, videoW, videoH);
+      _offCtx.drawImage(video, 0, 0);
+
+      const imgData = (cropX > 0 || cropY > 0)
+        ? _offCtx.getImageData(cropX, cropY, cropW, cropH)
+        : _offCtx.getImageData(0, 0, cropW || videoW, cropH || videoH);
+
+      frames.push(new Uint8Array(imgData.data.buffer));
+      frameIdx++;
+
+      if (frameIdx >= totalFrames) {
+        video.pause();
+        resolve(frames);
+        return;
+      }
+
+      video.requestVideoFrameCallback(onFrame);
+    }
+
+    video.requestVideoFrameCallback(onFrame);
+  });
 }
 
 // ── 双轨合并 ──────────────────────────────────────

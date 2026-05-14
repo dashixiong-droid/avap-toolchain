@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>AVAP WebGL2 解码验证</title>
+<style>
+body { background: #1a1a2e; color: #eee; font-family: monospace; margin: 20px; }
+canvas { border: 1px solid #444; margin: 10px; }
+.row { display: flex; align-items: flex-start; gap: 20px; flex-wrap: wrap; }
+.panel { background: #16213e; padding: 16px; border-radius: 8px; }
+h2 { color: #e94560; }
+.log { background: #0f3460; padding: 12px; border-radius: 4px; max-height: 300px; overflow-y: auto; white-space: pre-wrap; font-size: 13px; }
+</style>
+</head>
+<body>
+<h1>AVAP WebGL2 解码验证</h1>
+
+<div class="row">
+  <div class="panel">
+    <h2>1. 单轨 VP9 Alpha</h2>
+    <canvas id="singleCanvas" width="512" height="512"></canvas>
+    <p id="singleInfo">等待加载...</p>
+  </div>
+  <div class="panel">
+    <h2>2. 双轨合并 RGBA</h2>
+    <canvas id="dualCanvas" width="512" height="512"></canvas>
+    <p id="dualInfo">等待加载...</p>
+  </div>
+  <div class="panel">
+    <h2>3. WebGL2 纹理上传</h2>
+    <canvas id="glCanvas" width="512" height="512"></canvas>
+    <p id="glInfo">等待加载...</p>
+  </div>
+</div>
+
+<div class="panel" style="margin-top:20px">
+  <h2>日志</h2>
+  <div class="log" id="log"></div>
+</div>
+
+<script>
+const logEl = document.getElementById('log');
+function log(msg) {
+  logEl.textContent += msg + '\n';
+  logEl.scrollTop = logEl.scrollHeight;
+  console.log(msg);
+}
+
+// ── 工具 ──────────────────────────────────────────
+function createVideo(src) {
+  return new Promise((resolve, reject) => {
+    const v = document.createElement('video');
+    v.muted = true;
+    v.playsInline = true;
+    v.preload = 'auto';
+    v.addEventListener('loadeddata', () => resolve(v));
+    v.addEventListener('error', () => reject(new Error('视频加载失败: ' + src)));
+    v.src = src;
+  });
+}
+
+function seekTo(video, time) {
+  return new Promise(resolve => {
+    video.currentTime = time;
+    video.addEventListener('seeked', resolve, { once: true });
+  });
+}
+
+// ── 测试1: 单轨 VP9 Alpha ──────────────────────────
+async function testSingleTrack() {
+  try {
+    const video = await createVideo('output/atlas_000.webm');
+    log(`单轨: ${video.videoWidth}x${video.videoHeight}, 时长=${video.duration.toFixed(2)}s`);
+
+    const canvas = document.getElementById('singleCanvas');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d');
+
+    // 播放并逐帧抓取
+    video.play();
+    let frameCount = 0;
+    let hasAlpha = false;
+
+    const drawFrame = () => {
+      if (video.paused || video.ended) return;
+      ctx.drawImage(video, 0, 0);
+
+      if (frameCount === 0) {
+        // 检测 alpha 通道
+        const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        let minA = 255, maxA = 0;
+        for (let i = 3; i < imgData.data.length; i += 4) {
+          minA = Math.min(minA, imgData.data[i]);
+          maxA = Math.max(maxA, imgData.data[i]);
+        }
+        hasAlpha = minA < 255;
+        log(`单轨 Alpha: min=${minA}, max=${maxA}, 有透明=${hasAlpha}`);
+        document.getElementById('singleInfo').textContent =
+          `${video.videoWidth}x${video.videoHeight} | Alpha: min=${minA} max=${maxA} | 透明=${hasAlpha ? '✅' : '❌'}`;
+      }
+      frameCount++;
+      requestAnimationFrame(drawFrame);
+    };
+    requestAnimationFrame(drawFrame);
+
+  } catch (e) {
+    log('单轨测试失败: ' + e.message);
+    document.getElementById('singleInfo').textContent = '❌ ' + e.message;
+  }
+}
+
+// ── 测试2: 双轨合并 ────────────────────────────────
+async function testDualTrack() {
+  try {
+    const rgbVideo = await createVideo('output/atlas_000.webm');
+    const alphaVideo = await createVideo('output/atlas_000_alpha.webm');
+    log(`双轨 RGB: ${rgbVideo.videoWidth}x${rgbVideo.videoHeight}`);
+    log(`双轨 Alpha: ${alphaVideo.videoWidth}x${alphaVideo.videoHeight}`);
+
+    const canvas = document.getElementById('dualCanvas');
+    canvas.width = rgbVideo.videoWidth;
+    canvas.height = rgbVideo.videoHeight;
+    const ctx = canvas.getContext('2d');
+
+    // 临时 canvas 用于读取 alpha
+    const alphaCanvas = document.createElement('canvas');
+    alphaCanvas.width = alphaVideo.videoWidth;
+    alphaCanvas.height = alphaVideo.videoHeight;
+    const alphaCtx = alphaCanvas.getContext('2d');
+
+    rgbVideo.play();
+    alphaVideo.play();
+
+    let frameCount = 0;
+    let t0 = performance.now();
+
+    const drawFrame = () => {
+      if (rgbVideo.paused || rgbVideo.ended) {
+        const elapsed = performance.now() - t0;
+        log(`双轨: ${frameCount}帧 / ${(elapsed/1000).toFixed(2)}s = ${(frameCount/(elapsed/1000)).toFixed(1)} fps`);
+        return;
+      }
+
+      // 绘制 RGB
+      ctx.drawImage(rgbVideo, 0, 0);
+      const rgbData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+      // 绘制 Alpha
+      alphaCtx.drawImage(alphaVideo, 0, 0);
+      const alphaData = alphaCtx.getImageData(0, 0, alphaCanvas.width, alphaCanvas.height);
+
+      // 合并: RGB + Alpha灰度 → RGBA
+      const rgb = rgbData.data;
+      const alpha = alphaData.data;
+      for (let i = 0; i < rgb.length; i += 4) {
+        rgb[i + 3] = alpha[i]; // R通道作为alpha
+      }
+      ctx.putImageData(rgbData, 0, 0);
+
+      if (frameCount === 0) {
+        let minA = 255, maxA = 0;
+        for (let i = 3; i < rgb.length; i += 4) {
+          minA = Math.min(minA, rgb[i]);
+          maxA = Math.max(maxA, rgb[i]);
+        }
+        log(`双轨合并 Alpha: min=${minA}, max=${maxA}`);
+        document.getElementById('dualInfo').textContent =
+          `${canvas.width}x${canvas.height} | Alpha: min=${minA} max=${maxA} | ✅`;
+      }
+
+      frameCount++;
+      requestAnimationFrame(drawFrame);
+    };
+    requestAnimationFrame(drawFrame);
+
+  } catch (e) {
+    log('双轨测试失败: ' + e.message);
+    document.getElementById('dualInfo').textContent = '❌ ' + e.message;
+  }
+}
+
+// ── 测试3: WebGL2 纹理上传 ─────────────────────────
+async function testWebGL2() {
+  try {
+    const rgbVideo = await createVideo('output/atlas_000.webm');
+    const alphaVideo = await createVideo('output/atlas_000_alpha.webm');
+
+    const canvas = document.getElementById('glCanvas');
+    canvas.width = rgbVideo.videoWidth;
+    canvas.height = rgbVideo.videoHeight;
+    const gl = canvas.getContext('webgl2', { alpha: true, premultipliedAlpha: false });
+
+    if (!gl) {
+      log('WebGL2 不可用!');
+      document.getElementById('glInfo').textContent = '❌ WebGL2 不可用';
+      return;
+    }
+
+    log(`WebGL2: ${gl.getParameter(gl.VERSION)}, Renderer: ${gl.getParameter(gl.RENDERER)}`);
+
+    // 着色器
+    const vs = `#version 300 es
+    in vec2 a_pos;
+    in vec2 a_uv;
+    out vec2 v_uv;
+    void main() {
+      gl_Position = vec4(a_pos, 0.0, 1.0);
+      v_uv = a_uv;
+    }`;
+
+    const fs = `#version 300 es
+    precision mediump float;
+    in vec2 v_uv;
+    uniform sampler2D u_rgb;
+    uniform sampler2D u_alpha;
+    out vec4 fragColor;
+    void main() {
+      vec3 rgb = texture(u_rgb, v_uv).rgb;
+      float a = texture(u_alpha, v_uv).r;
+      fragColor = vec4(rgb, a);
+    }`;
+
+    function compileShader(src, type) {
+      const s = gl.createShader(type);
+      gl.shaderSource(s, src);
+      gl.compileShader(s);
+      if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+        log('着色器编译失败: ' + gl.getShaderInfoLog(s));
+        return null;
+      }
+      return s;
+    }
+
+    const prog = gl.createProgram();
+    gl.attachShader(prog, compileShader(vs, gl.VERTEX_SHADER));
+    gl.attachShader(prog, compileShader(fs, gl.FRAGMENT_SHADER));
+    gl.linkProgram(prog);
+    gl.useProgram(prog);
+
+    // 全屏四边形
+    const verts = new Float32Array([-1,-1, 0,1, 1,-1, 1,1, -1,1, 0,0, 1,1, 1,0]);
+    const vbo = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+    gl.bufferData(gl.ARRAY_BUFFER, verts, gl.STATIC_DRAW);
+
+    const aPos = gl.getAttribLocation(prog, 'a_pos');
+    const aUv = gl.getAttribLocation(prog, 'a_uv');
+    gl.enableVertexAttribArray(aPos);
+    gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 16, 0);
+    gl.enableVertexAttribArray(aUv);
+    gl.vertexAttribPointer(aUv, 2, gl.FLOAT, false, 16, 8);
+
+    // 创建纹理
+    const rgbTex = gl.createTexture();
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, rgbTex);
+    gl.uniform1i(gl.getUniformLocation(prog, 'u_rgb'), 0);
+
+    const alphaTex = gl.createTexture();
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, alphaTex);
+    gl.uniform1i(gl.getUniformLocation(prog, 'u_alpha'), 1);
+
+    // 配置纹理参数（视频需要 CLAMP_TO_EDGE + LINEAR）
+    for (const tex of [rgbTex, alphaTex]) {
+      gl.bindTexture(gl.TEXTURE_2D, tex);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    }
+
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+
+    rgbVideo.play();
+    alphaVideo.play();
+
+    let frameCount = 0;
+    let t0 = performance.now();
+    let uploadTimes = [];
+
+    const drawFrame = () => {
+      if (rgbVideo.paused || rgbVideo.ended) {
+        const elapsed = performance.now() - t0;
+        const avgUpload = uploadTimes.reduce((a,b) => a+b, 0) / uploadTimes.length;
+        log(`WebGL2: ${frameCount}帧 / ${(elapsed/1000).toFixed(2)}s = ${(frameCount/(elapsed/1000)).toFixed(1)} fps`);
+        log(`WebGL2 平均纹理上传: ${avgUpload.toFixed(2)}ms/帧`);
+        document.getElementById('glInfo').textContent =
+          `${canvas.width}x${canvas.height} | ${frameCount}帧 | avg upload ${avgUpload.toFixed(1)}ms`;
+        return;
+      }
+
+      const t1 = performance.now();
+
+      // 上传 RGB 纹理
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, rgbTex);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, rgbVideo);
+
+      // 上传 Alpha 纹理
+      gl.activeTexture(gl.TEXTURE1);
+      gl.bindTexture(gl.TEXTURE_2D, alphaTex);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, alphaVideo);
+
+      // 绘制
+      gl.viewport(0, 0, canvas.width, canvas.height);
+      gl.clearColor(0.1, 0.1, 0.18, 1.0);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+      uploadTimes.push(performance.now() - t1);
+      if (uploadTimes.length > 120) uploadTimes.shift();
+
+      frameCount++;
+      requestAnimationFrame(drawFrame);
+    };
+    requestAnimationFrame(drawFrame);
+
+  } catch (e) {
+    log('WebGL2 测试失败: ' + e.message);
+    document.getElementById('glInfo').textContent = '❌ ' + e.message;
+  }
+}
+
+// ── 启动 ──────────────────────────────────────────
+log('=== AVAP WebGL2 解码验证 ===');
+log('UserAgent: ' + navigator.userAgent);
+
+// 检查 VP9 支持
+const vp9Support = document.createElement('video').canPlayType('video/webm; codecs="vp9"');
+const vp9AlphaSupport = document.createElement('video').canPlayType('video/webm; codecs="vp9.1"');
+log(`VP9 支持: ${vp9Support || '无'}`);
+log(`VP9 Alpha 支持: ${vp9AlphaSupport || '无'}`);
+
+testSingleTrack();
+testDualTrack();
+testWebGL2();
+</script>
+</body>
+</html>

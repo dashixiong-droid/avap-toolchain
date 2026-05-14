@@ -24,4 +24,5 @@ examples/web_test/index.html
 examples/web_test/style.css
 examples/web_test/chain_test.html
 examples/web_test/chain_test.js
-examples/webgl2_test.html
+examples/webgl2_test.htmlgodot_web_test_build/
+*.mp4
