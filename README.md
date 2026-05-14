@@ -104,6 +104,17 @@ avap-toolchain/
 ├── decoder.py             # 运行时解码（帧精确 seek + 裁切 + 双轨合并）
 ├── metadata_schema.py     # 元数据结构（AnimationInfo/AtlasMeta/AVAPMetadata）
 ├── vfx_gen.py             # 程序化特效生成器（7 种测试特效）
+├── godot/                 # Godot 4.x 插件
+│   └── addons/avap/
+│       ├── avap_metadata.gd  # 元数据加载器
+│       ├── avap_decoder.gd   # 视频解码器（FFmpeg 子进程）
+│       ├── avap_cache.gd     # 纹理缓存（Autoload 单例）
+│       ├── avap_player.gd    # 播放器节点（Sprite2D）
+│       ├── plugin.gd         # 编辑器插件入口
+│       ├── plugin.cfg        # 插件配置
+│       ├── icon.svg          # 节点图标
+│       ├── example_scene.gd  # 使用示例
+│       └── README.md         # 插件文档
 └── examples/              # 示例素材和输出
     ├── assets/            # 7 个特效的源帧 PNG
     └── output/            # 打包输出（.webm + metadata.json）
@@ -206,6 +217,85 @@ MaxRects 算法实现，支持动态 insert/remove。核心创新：利用动画
 - `rect` — 动画在 atlas 中的裁切区域（偶数对齐）
 - `orig_size` — 原始尺寸（与 rect 不同时说明做了偶数对齐扩展）
 - `alpha_video_file` — 双轨模式下的 Alpha 灰度视频文件名
+
+## 运行时性能
+
+### 两阶段模型
+
+AVAP 的运行时消耗分两个阶段，压力完全不同：
+
+- **解码阶段**（一次性）：从视频解码帧 → 创建纹理 → 缓存，有 CPU/IO 压力
+- **播放阶段**（持续）：`Sprite2D.texture = frames[i]`，纯显存引用切换，**零额外开销**
+
+### 解码耗时估算（ARM64 移动端）
+
+| 特效规模 | 解码耗时 | 显存占用 | 体感 |
+|---|---|---|---|
+| 小（64×64, 12帧） | ~5ms | 0.2MB | 无感 |
+| 中（256×256, 30帧） | ~30–60ms | 7.5MB | 微卡 |
+| 大（512×512, 60帧） | ~100–200ms | 60MB | 明显卡 |
+| 同时 3 个中特效 | ~100–180ms | 22MB | 需预加载 |
+
+> VP9 解码约 1–2ms/帧（ARM big core），比 PNG decode 慢 2–3 倍，但只发生在首次加载
+
+### 双轨额外开销
+
+- 解码两个视频（RGB + Alpha），seek 两次，解码量翻倍
+- 合并步骤：逐像素 `RGBA = (R, G, B, A_alpha)`，纯内存操作，30帧约 2–3ms
+
+### 主线程阻塞问题
+
+Godot 的 `ImageTexture.create_from_image()` 必须在主线程执行。解码 30 帧 256×256 会占主线程 30–60ms，帧率瞬间掉到 16fps。
+
+**解决方案**：
+
+1. **子线程解码 + 主线程上传** — GDExtension 用 `WorkerThreadPool` 做 FFmpeg decode → Image 数组，完成后发 Signal 通知主线程批量创建纹理，主线程阻塞从 60ms 降到 5–10ms
+2. **预加载** — 在场景切换/加载画面时预解码常用特效，进战斗后缓存已就绪
+3. **分批纹理上传** — 每帧创建 1–2 个 ImageTexture，分散到多帧渲染周期，延迟几帧开始播放但完全无卡顿
+4. **LRU 缓存淘汰** — 256×256×30帧 = 7.5MB 显存，手机 2GB 上限可缓存约 260 个中等特效，播完不常用的自动释放
+
+### 与传统序列帧对比
+
+| | 传统 PNG 序列帧 | AVAP 视频打包 |
+|---|---|---|
+| 包体 | 每个 PNG 单独存储 | WebM 压缩，省 90%+ |
+| 加载 | 逐个 PNG decode，IO 分散 | 一次 seek+decode，IO 集中 |
+| 首次解码 | PNG decode ≈ 0.5ms/帧 | VP9 decode ≈ 1–2ms/帧 |
+| 播放性能 | 纹理切换 | 纹理切换（完全等同） |
+| 显存占用 | 一样 | 一样 |
+
+**结论**：VP9 解码比 PNG 慢 2–3 倍，但只发生在首次加载。包体省 90%+，播放性能完全等同。手机端用子线程解码 + 预加载即可消除卡顿。
+
+## Godot 集成
+
+`godot/addons/avap/` 目录包含完整的 Godot 4.x 插件：
+
+| 文件 | 说明 |
+|---|---|
+| `avap_metadata.gd` | 元数据加载器，解析 avap_metadata.json |
+| `avap_decoder.gd` | 视频解码器，调用 FFmpeg 子进程 |
+| `avap_cache.gd` | 纹理缓存（Autoload），LRU 淘汰 |
+| `avap_player.gd` | 播放器节点（Sprite2D），帧率控制 |
+| `plugin.gd` / `plugin.cfg` | 编辑器插件注册 |
+| `example_scene.gd` | 使用示例 |
+
+快速上手：
+
+```gdscript
+# 1. 加载元数据
+AVAPCache.load_metadata("res://vfx/avap_metadata.json")
+
+# 2. 预加载
+AVAPCache.preload(["explosion", "slash"])
+
+# 3. 播放
+var player = AVAPPlayer.new()
+player.animation = "explosion"
+add_child(player)
+player.play()
+```
+
+详见 [godot/addons/avap/README.md](godot/addons/avap/README.md)。
 
 ## 注意事项
 
