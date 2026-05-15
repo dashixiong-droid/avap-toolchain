@@ -1,20 +1,23 @@
 ## AVAP 动画资源
 ## 继承 Resource，可序列化到 .tscn / .tres
-## 在编辑器里拖拽赋值，标记此动画走 AVAP 打包管线
+##
+## 开发时：直接引用带 alpha 通道的原始视频
+## 打包时：按 tag 分组 → binpack → 拆 alpha → 双轨编码
 ##
 ## 用法:
-##   var res = AVAPResource.new()
-##   res.metadata_path = "res://effects/fire/avap_metadata.json"
-##   res.animation_name = "fire_ring"
+##   在 Inspector 里拖入视频文件，设置 tag 和播放参数
+##   打包脚本自动扫描、分组、编码
 @tool
 extends Resource
 class_name AVAPResource
 
-## 元数据文件路径（res:// 开头）
-@export_file("*.json") var metadata_path: String = ""
+## 带 alpha 通道的视频文件路径
+@export_file("*.webm", "*.mp4", "*.mov", "*.avi") var video_path: String = ""
 
-## 动画名称（对应 metadata 里的 animations 键名）
-@export var animation_name: String = ""
+## 打包分组标签
+## 同 tag 的动画 binpack 到同一个 atlas
+## 打包时可按 tag 配置不同的压缩参数
+@export var tag: String = "default"
 
 ## 循环模式
 enum LoopMode {
@@ -31,8 +34,18 @@ enum LoopMode {
 ## 自动播放
 @export var autoplay: bool = false
 
+## 获取动画名（从文件名推导）
+func get_animation_name() -> String:
+	if video_path == "":
+		return ""
+	var name: String = video_path.get_file().get_basename()
+	# 去掉 _alpha 后缀（如果有）
+	name = name.replace("_alpha", "")
+	return name
+
 ## 获取显示名（编辑器用）
 func _to_string() -> String:
-	if animation_name != "":
-		return "AVAPResource(%s)" % animation_name
+	var anim := get_animation_name()
+	if anim != "":
+		return "AVAPResource[%s](%s)" % [tag, anim]
 	return "AVAPResource(empty)"
