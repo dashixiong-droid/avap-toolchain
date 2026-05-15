@@ -8,6 +8,17 @@ enum LoopMode {
 	RESTART,
 }
 
+## AVAP 动画资源引用（编辑器里拖拽赋值，序列化到 .tscn）
+@export var avap: AVAPResource = null:
+	set(v):
+		avap = v
+		if avap and Engine.is_editor_hint():
+			animation_name = avap.animation_name
+			loop_mode = avap.loop_mode
+			speed_scale = avap.speed_scale
+			autoplay = avap.autoplay
+
+## 兼容：直接设置动画名（不通过 AVAPResource）
 @export var animation_name: String = "":
 	set(v):
 		animation_name = v
@@ -24,12 +35,24 @@ func _ready() -> void:
 	var script := load("res://addons/avap/avap_anim_player.gd")
 	_anim = Node.new()
 	_anim.set_script(script)
-	_anim.animation_name = animation_name
-	_anim.loop_mode = loop_mode
-	_anim.speed_scale = speed_scale
-	_anim.autoplay = autoplay
 	add_child(_anim)
 	_anim.frame_changed.connect(_on_frame_changed)
+	
+	# 优先从 AVAPResource 读取
+	if avap:
+		animation_name = avap.animation_name
+		loop_mode = avap.loop_mode
+		speed_scale = avap.speed_scale
+		autoplay = avap.autoplay
+		_anim.animation_name = animation_name
+		_anim.loop_mode = loop_mode
+		_anim.speed_scale = speed_scale
+		_anim.autoplay = autoplay
+	else:
+		_anim.animation_name = animation_name
+		_anim.loop_mode = loop_mode
+		_anim.speed_scale = speed_scale
+		_anim.autoplay = autoplay
 
 func play(anim_name: String = "", mode: LoopMode = LoopMode.LOOP, custom_speed: float = -1.0, custom_fps: float = -1.0, from_frame: int = 0) -> void:
 	_anim.play(anim_name, mode, custom_speed, custom_fps, from_frame)
