@@ -1,0 +1,65 @@
+#!/usr/bin/env python3
+"""AVAPDecoderIOS — SCons 构建脚本
+编译 GDExtension 动态库 for iOS (arm64)
+"""
+
+import os
+import subprocess
+
+# godot-cpp 路径
+godot_cpp_path = os.path.join(Dir(".").abspath, "godot-cpp")
+
+# SCons 环境 — 用 clang++ 并支持 Objective-C++
+env = Environment(CXX="clang++")
+
+# iOS SDK
+ios_sdk_path = subprocess.run(
+    ["xcrun", "--sdk", "iphoneos", "--show-sdk-path"],
+    capture_output=True, text=True
+).stdout.strip()
+
+# 编译器标志
+env.Append(CCFLAGS=[
+    "-arch", "arm64",
+    "-isysroot", ios_sdk_path,
+    "-miphoneos-version-min=11.0",
+    "-fobjc-arc",
+    "-x", "objective-c++",
+    "-stdlib=libc++",
+    "-DOBJC_OLD_DISPATCH_PROTOTYPES=1",
+])
+
+env.Append(CXXFLAGS=["-std=c++17"])
+env.Append(LINKFLAGS=[
+    "-arch", "arm64",
+    "-isysroot", ios_sdk_path,
+    "-miphoneos-version-min=11.0",
+    "-framework", "VideoToolbox",
+    "-framework", "CoreMedia",
+    "-framework", "CoreVideo",
+    "-framework", "AVFoundation",
+    "-framework", "Foundation",
+    "-dynamiclib",
+    "-lstdc++",
+])
+
+# 源文件
+sources = [
+    "avap_decoder_ios.cpp",
+    "register_types.cpp",
+]
+
+# godot-cpp 头文件
+env.Append(CPPPATH=[
+    godot_cpp_path + "/include",
+    godot_cpp_path + "/gen/include",
+    ".",
+])
+
+# 链接 godot-cpp 静态库
+env.Append(LIBPATH=[godot_cpp_path + "/bin"])
+env.Append(LIBS=["godot-cpp.ios.template_debug.arm64"])
+
+# 输出: libavap_decoder_ios.ios.debug.arm64.dylib
+target = "libavap_decoder_ios.ios.debug.arm64"
+env.SharedLibrary(target, sources)

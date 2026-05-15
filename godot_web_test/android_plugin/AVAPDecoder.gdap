@@ -1,0 +1,8 @@
+[plugin]
+
+name="AVAPDecoder"
+binary_type="local"
+binary=classes.dex
+
+[dependencies]
+

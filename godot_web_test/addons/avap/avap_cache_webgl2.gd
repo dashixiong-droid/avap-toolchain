@@ -23,7 +23,12 @@ func _init_decoder() -> void:
 		add_child(d)
 		print("[AVAPCache] WebGL2 解码器")
 	else:
-		push_warning("[AVAPCache] 非 WebGL2 环境，暂无桌面端解码器")
+		# Android / Desktop：用原生 VideoStreamPlayer 解码
+		var d = Node.new()
+		d.set_script(load("res://addons/avap/avap_decoder_native.gd"))
+		_decoder = d
+		add_child(d)
+		print("[AVAPCache] 原生解码器 (%s)" % OS.get_name())
 
 func load_metadata(metadata_path: String) -> bool:
 	if _decoder == null:

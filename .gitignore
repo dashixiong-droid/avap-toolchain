@@ -24,5 +24,27 @@ examples/web_test/index.html
 examples/web_test/style.css
 examples/web_test/chain_test.html
 examples/web_test/chain_test.js
-examples/webgl2_test.htmlgodot_web_test_build/
-*.mp4
+examples/webgl2_test.html
+# godot_web_test 编译产物
+godot_web_test/build/
+godot_web_test/addons/avap/ios/godot-cpp/
+godot_web_test/addons/avap/ios/*.o
+godot_web_test/addons/avap/ios/*.os
+godot_web_test/addons/avap/ios/*.dylib
+godot_web_test/addons/avap/ios/test_*
+godot_web_test/android_plugin/libs/
+godot_web_test/android_plugin/*.dex
+godot_web_test/android_plugin/*.class
+
+# H264 测试文件（打包脚本会生成）
+godot_web_test/avap_data/*_h264.mp4
+
+# Godot 编辑器缓存
+.godot/
+
+# 旧 web 构建产物
+godot_web_test_build/
+
+# MP4 转码产物（打包脚本自动生成）
+godot_web_test/avap_data/*.mp4
+godot_web_test/addons/avap/ios/.sconsign.dblite

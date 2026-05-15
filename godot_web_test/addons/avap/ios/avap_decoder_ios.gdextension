@@ -1,0 +1,13 @@
+[configuration]
+
+entry_symbol = "avap_decoder_ios_library_init"
+compatibility_minimum = 4.2
+
+[libraries]
+
+ios.debug = "res://addons/avap/ios/libavap_decoder_ios.ios.debug.arm64.dylib"
+ios.release = "res://addons/avap/ios/libavap_decoder_ios.ios.release.arm64.dylib"
+
+[dependencies]
+
+ios = []
