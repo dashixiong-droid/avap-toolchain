@@ -1,6 +1,6 @@
 ## AVAP 原生解码器（Android / iOS / Desktop）
 ## Android: 通过 GodotPlugin 桥接调用 MediaCodec 逐帧解码 VP9
-## iOS: 通过 GDExtension 调用 VideoToolbox 逐帧解码 VP9
+## iOS: 通过 GDExtension 调用 AVAssetReader 逐帧解码 H.264
 ## Desktop: 占位（后续可用 GDExtension + FFmpeg）
 extends Node
 
@@ -9,6 +9,7 @@ var _metadata: Dictionary = {}
 var _base_dir: String = ""
 var _plugin: Object = null  # Android: JNISingleton, iOS: GDExtension
 var _atlas_cache: Dictionary = {}
+var _path_resolver: RefCounted = null  # AVAPPathResolver
 
 func initialize(metadata_path: String) -> bool:
 	var file := FileAccess.open(metadata_path, FileAccess.READ)
@@ -24,6 +25,10 @@ func initialize(metadata_path: String) -> bool:
 		return false
 	_metadata = parsed
 	_base_dir = metadata_path.get_base_dir()
+	
+	# 初始化路径解析器
+	_path_resolver = load("res://addons/avap/avap_path_resolver.gd").new()
+	_path_resolver.base_dir = _base_dir
 	
 	if OS.has_feature("android"):
 		_plugin = Engine.get_singleton("AVAPDecoder")
@@ -42,6 +47,17 @@ func initialize(metadata_path: String) -> bool:
 	_initialized = true
 	print("AVAPNativeDecoder: 初始化完成 (plugin=%s)" % str(_plugin != null))
 	return true
+
+## 设置自定义路径解析器（供外部 ResourceManager 接管）
+func set_path_resolver(resolver: RefCounted) -> void:
+	_path_resolver = resolver
+	if _path_resolver and not _path_resolver.base_dir:
+		_path_resolver.base_dir = _base_dir
+
+## 设置自定义路径解析 callable
+func set_custom_path_resolver(resolver_callable: Callable) -> void:
+	if _path_resolver:
+		_path_resolver.set_custom_resolver(resolver_callable)
 
 func list_animations() -> PackedStringArray:
 	if not _initialized:
@@ -128,9 +144,9 @@ func _decode_atlas(atlas_index: int) -> Dictionary:
 	var result: Dictionary = {"width": atlas_w, "height": atlas_h, "color_frames": [], "alpha_frames": []}
 	
 	if _plugin != null:
-		# 解码颜色轨道（逐帧）
-		var color_path: String = _ensure_accessible(_base_dir.path_join(color_file))
-		print("AVAPNativeDecoder: 解码颜色 %s" % color_file)
+		# 通过路径解析器获取物理路径
+		var color_path: String = _path_resolver.resolve(color_file)
+		print("AVAPNativeDecoder: 解码颜色 %s → %s" % [color_file, color_path])
 		var color_handle: int = _plugin.initDecoder(color_path)
 		if color_handle < 0:
 			push_error("AVAPNativeDecoder: 颜色解码器初始化失败")
@@ -152,8 +168,8 @@ func _decode_atlas(atlas_index: int) -> Dictionary:
 		
 		# 解码 alpha 轨道（逐帧）
 		if alpha_file != "":
-			var alpha_path: String = _ensure_accessible(_base_dir.path_join(alpha_file))
-			print("AVAPNativeDecoder: 解码alpha %s" % alpha_file)
+			var alpha_path: String = _path_resolver.resolve(alpha_file)
+			print("AVAPNativeDecoder: 解码alpha %s → %s" % [alpha_file, alpha_path])
 			var alpha_handle: int = _plugin.initDecoder(alpha_path)
 			if alpha_handle >= 0:
 				frame_idx = 0
@@ -178,34 +194,6 @@ func _decode_atlas(atlas_index: int) -> Dictionary:
 	
 	_atlas_cache[atlas_index] = result
 	return result
-
-func _ensure_accessible(res_path: String) -> String:
-	if not OS.has_feature("android"):
-		return res_path
-	
-	var filename: String = res_path.get_file()
-	var user_path: String = "user://avap_videos/" + filename
-	var abs_path: String = OS.get_user_data_dir() + "/avap_videos/" + filename
-	
-	if FileAccess.file_exists(user_path):
-		return abs_path
-	
-	var src := FileAccess.open(res_path, FileAccess.READ)
-	if not src:
-		push_error("AVAPNativeDecoder: 无法打开源文件: " + res_path)
-		return res_path
-	
-	DirAccess.make_dir_recursive_absolute("user://avap_videos")
-	var dst := FileAccess.open(user_path, FileAccess.WRITE)
-	if not dst:
-		src.close()
-		return res_path
-	
-	dst.store_buffer(src.get_buffer(src.get_length()))
-	src.close()
-	dst.close()
-	print("AVAPNativeDecoder: 复制 %s → %s" % [res_path, abs_path])
-	return abs_path
 
 func _apply_alpha(color_img: Image, alpha_img: Image) -> void:
 	var w := color_img.get_width()
