@@ -46,6 +46,9 @@ public:
     /// 异步解码（子线程），完成后发 decode_completed 信号
     void decode_async(const String &p_anim_name);
 
+    /// 开发模式：直接解码视频文件全部帧（无裁切），返回 Array[ImageTexture]
+    Array decode_video(const String &p_video_path);
+
     /// 列出所有可用动画
     PackedStringArray list_animations() const;
 

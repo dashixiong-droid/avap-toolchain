@@ -2,6 +2,7 @@
 
 #include <godot_cpp/classes/json.hpp>
 #include <godot_cpp/classes/file_access.hpp>
+#include <godot_cpp/classes/project_settings.hpp>
 #include <godot_cpp/classes/worker_thread_pool.hpp>
 #include <godot_cpp/variant/utility_functions.hpp>
 
@@ -20,6 +21,7 @@ void AVAPDecoder::_bind_methods() {
     ClassDB::bind_method(D_METHOD("load_metadata", "path"), &AVAPDecoder::load_metadata);
     ClassDB::bind_method(D_METHOD("decode", "anim_name"), &AVAPDecoder::decode);
     ClassDB::bind_method(D_METHOD("decode_async", "anim_name"), &AVAPDecoder::decode_async);
+    ClassDB::bind_method(D_METHOD("decode_video", "video_path"), &AVAPDecoder::decode_video);
     ClassDB::bind_method(D_METHOD("list_animations"), &AVAPDecoder::list_animations);
     ClassDB::bind_method(D_METHOD("release", "anim_name"), &AVAPDecoder::release);
     ClassDB::bind_method(D_METHOD("release_all"), &AVAPDecoder::release_all);
@@ -360,6 +362,64 @@ cleanup:
     if (fmt_ctx) avformat_close_input(&fmt_ctx);
 
     return result;
+}
+
+// ── 开发模式：直接解码视频 ──────────────────────────────────
+
+Array AVAPDecoder::decode_video(const String &p_video_path) {
+    std::string video_path = std::string(ProjectSettings::get_singleton()->globalize_path(p_video_path).utf8().get_data());
+
+    // 先探测视频信息
+    AVFormatContext *probe_ctx = nullptr;
+    int ret = avformat_open_input(&probe_ctx, video_path.c_str(), nullptr, nullptr);
+    if (ret < 0) {
+        UtilityFunctions::push_error(vformat("AVAP: 无法打开视频: %s", p_video_path));
+        return Array();
+    }
+    avformat_find_stream_info(probe_ctx, nullptr);
+
+    int video_stream = -1;
+    int total_frames = 0;
+    int width = 0, height = 0;
+    for (unsigned int i = 0; i < probe_ctx->nb_streams; i++) {
+        if (probe_ctx->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
+            video_stream = i;
+            width = probe_ctx->streams[i]->codecpar->width;
+            height = probe_ctx->streams[i]->codecpar->height;
+            total_frames = probe_ctx->streams[i]->nb_frames;
+            if (total_frames <= 0) {
+                // 有些格式没有 nb_frames，用 duration 估算
+                AVRational tb = probe_ctx->streams[i]->time_base;
+                total_frames = (int)(probe_ctx->streams[i]->duration * tb.num / (tb.den * 30.0));
+            }
+            break;
+        }
+    }
+    avformat_close_input(&probe_ctx);
+
+    if (video_stream < 0 || total_frames <= 0) {
+        UtilityFunctions::push_error(vformat("AVAP: 视频信息无效: %s", p_video_path));
+        return Array();
+    }
+
+    UtilityFunctions::print(vformat("AVAP: decode_video %s (%dx%d, %d帧)", p_video_path, width, height, total_frames));
+
+    // 解码全部帧，不做裁切（crop=整个视频尺寸）
+    std::vector<Ref<Image>> images = ffmpeg_decode_range(
+        video_path, 0, total_frames - 1,
+        0, 0, width, height,
+        false);
+
+    Array textures;
+    for (auto &img : images) {
+        if (img.is_valid()) {
+            Ref<ImageTexture> tex = ImageTexture::create_from_image(img);
+            textures.append(tex);
+        }
+    }
+
+    UtilityFunctions::print(vformat("AVAP: decode_video 完成 '%s' (%d帧)", p_video_path, (int)textures.size()));
+    return textures;
 }
 
 // ── 查询 ────────────────────────────────────────────────────

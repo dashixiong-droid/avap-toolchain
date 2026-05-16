@@ -48,3 +48,13 @@ godot_web_test_build/
 # MP4 转码产物（打包脚本自动生成）
 godot_web_test/avap_data/*.mp4
 godot_web_test/addons/avap/ios/.sconsign.dblite
+
+# Godot 导入缓存
+*.png.import
+*.jpg.import
+*.svg.import
+*.webm.import
+*.mov.import
+*.ogg.import
+*.wav.import
+

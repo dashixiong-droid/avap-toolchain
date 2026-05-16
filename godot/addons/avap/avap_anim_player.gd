@@ -44,7 +44,7 @@ var _custom_fps: float = -1.0 # play() 时覆盖的帧率，-1 表示用元数�
 var _playing: bool = false
 var _elapsed: float = 0.0
 var _direction: int = 1       # 1=正向, -1=反向（pingpong 用）
-var _cache: AVAPCache = null
+var _cache: AVAPTextureCache = null
 
 func _ready() -> void:
 	if autoplay and animation_name != "":
@@ -114,7 +114,7 @@ func get_current_texture() -> Texture2D:
 	return _frames[_frame_index]
 
 ## 设置动画源
-func setup(cache: AVAPCache, anim_name: String) -> void:
+func setup(cache: AVAPTextureCache, anim_name: String) -> void:
 	_cache = cache
 	animation_name = anim_name
 
@@ -136,15 +136,13 @@ func play(anim_name: String = "", mode: LoopMode = LoopMode.LOOP, custom_speed: 
 		push_error("AVAPAnimPlayer: AVAPCache 未找到")
 		return
 
-	_frames = await _cache.get_animation(animation_name)
+	_frames = _cache.get_frames(animation_name)
 	if _frames.is_empty():
 		push_error("AVAPAnimPlayer: 解码失败: " + animation_name)
 		return
 
-	var info := {}
-	if _cache._decoder:
-		info = _cache._decoder.get_animation_info(animation_name)
-	_fps = info.get("fps", 30.0)
+	# fps 默认 30，可通过 custom_fps 参数覆盖
+	_fps = 30.0
 
 	loop_mode = mode
 	_custom_fps = custom_fps
@@ -196,8 +194,8 @@ func get_animation_size() -> Vector2i:
 	var img: ImageTexture = _frames[0]
 	return Vector2i(img.get_width(), img.get_height())
 
-func _find_cache() -> AVAPCache:
+func _find_cache() -> AVAPTextureCache:
 	var node := get_node_or_null("/root/AVAPCache")
-	if node and node is AVAPCache:
+	if node and node is AVAPTextureCache:
 		return node
 	return null

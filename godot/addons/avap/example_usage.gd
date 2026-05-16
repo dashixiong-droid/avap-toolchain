@@ -1,7 +1,7 @@
 ## AVAP 使用示例
 extends Node2D
 
-var _cache: AVAPCache = null
+var _cache: AVAPTextureCache = null
 
 func _ready() -> void:
 	_cache = get_node("/root/AVAPCache")
@@ -25,7 +25,7 @@ func _ready() -> void:
 	var once := AVAPPlayer.new()
 	once.position = Vector2(550, 200)
 	once.play("slash", AVAPAnimPlayer.LoopMode.ONCE)
-	once.animation_finished.connect(func(): print("slash 播完了"))
+	once.get_anim_player().animation_finished.connect(func(): print("slash 播完了"))
 	add_child(once)
 
 	# ── RESTART + 自定义速度 ──────────────────────
@@ -54,7 +54,7 @@ func _ready() -> void:
 	anim.play("", AVAPAnimPlayer.LoopMode.PINGPONG, 0.5)  # 半速 pingpong
 
 	# ── 手动控制 ─────────────────────────────────
-	var frames := await _cache.get_animation("shield")
+	var frames := await _cache.get_frames("shield")
 	if not frames.is_empty():
 		var sprite := Sprite2D.new()
 		sprite.position = Vector2(550, 450)

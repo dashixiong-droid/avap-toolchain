@@ -297,12 +297,101 @@ player.play()
 
 详见 [godot/addons/avap/README.md](godot/addons/avap/README.md)。
 
+## 三端原生解码
+
+AVAP 在不同平台使用不同的原生解码方案，零外部依赖：
+
+| 平台 | 解码器 | 体积 | 视频格式 |
+|---|---|---|---|
+| macOS | FFmpeg 静态链接 dylib（~18MB） | 自带 | VP9 双轨 |
+| iOS | AVAssetReader（AVFoundation） | 零体积 | H.264 双轨 |
+| Android | MediaCodec（系统 API） | 零体积 | VP9 双轨 |
+
+GDScript 层通过 `AVAPNativeDecoder` 自动按平台选择解码器，上层代码无需关心平台差异。
+
+### Android 构建流程
+
+Android 插件以 AAR 形式提供，Godot 4.6 通过 Gradle 自动拾取。
+
+**1. AAR 格式要求**
+
+- 必须包含 `classes.jar`（不是 `classes.dex`），Gradle 不认后者
+- `AndroidManifest.xml` 必须声明 v2 插件 meta-data：
+
+```xml
+<meta-data
+    android:name="org.godotengine.plugin.v2.AVAPDecoder"
+    android:value="org.godotengine.godot.plugin.avap.AVAPDecoderPlugin" />
+```
+
+- Godot 4.2+ 废弃 `.gdap` 文件，改用 AAR 内的 meta-data 注册插件
+
+**2. AAR 放置位置**
+
+Debug 构建只从 `libs/debug/` 拾取 AAR：
+
+```
+builds/android/
+├── libs/
+│   └── debug/
+│       └── AVAPDecoderPlugin.debug.aar
+└── src/main/assets/...
+```
+
+**3. APK 构建流程（预编译模式）**
+
+Godot 4.6 Android 必须使用 `assets.sparsepck` 格式，普通 PCK 不被支持。构建步骤：
+
+```bash
+# Step 1: Godot 预编译模式导出（gradle_build_type=0）
+# 生成 android_source.zip + sparsepck
+godot --headless --export-debug "Android" builds/android_source.zip
+
+# Step 2: 解压 Godot 模板到 Gradle 项目
+unzip -o builds/android_source.zip -d builds/android/
+
+# Step 3: 提取 sparsepck 和场景文件到 assets
+# 从导出目录或 APK 中提取以下内容到 builds/android/src/main/assets/：
+#   - assets.sparsepck（或 com.包名.pck）
+#   - project.binary
+#   - .godot/exported/ 目录（含 .remap 文件）
+
+# Step 4: 构建 APK
+cd builds/android && ./gradlew assembleStandardDebug
+
+# Step 5: 签名
+zipalign -f 4 app/build/outputs/apk/standard/debug/*.apk aligned.apk
+apksigner sign --ks ~/Library/Application\ Support/Godot/keystores/debug.keystore \
+    --ks-pass pass:android --key-pass pass:android aligned.apk
+
+# Step 6: 安装
+adb install -r aligned.apk
+```
+
+**4. 关键踩坑记录**
+
+- **sparsepck 格式**：必须启用 ETC2/ASTC 纹理压缩（`textures/vram_compression/import_etc2_astc=true`），否则导出的不是 sparsepck 而是 PCK，Android 无法加载
+- **场景加载失败**：assets 必须包含 `.godot/exported/` 目录和 `.remap` 文件，否则 `main.tscn` 找不到
+- **gdextension 嵌套**：不要在 assets 中放入 `builds/android/` 嵌套路径，会导致 Godot 递归加载错误的 gdextension 配置
+- **android_aar_plugin**：`avap.gdextension` 必须加 `android_aar_plugin = true`，否则 Godot 报 "No GDExtension library found for android.arm64"
+- **视频路径**：`res://` 路径在 Android 上映射到 APK 内部，视频不在那里。Android streaming 模式需用绝对路径（如 `/sdcard/`），或由 Java 插件提供路径映射
+- **ADB 无线调试**：如果系统开了 SOCKS 代理（ClashX 等），`adb connect` 前需关代理或用 `--noproxy`
+- **sparsepck 脚本缓存**：`assets.sparsepck` 包含编译后的 `.gdc` 脚本，Godot 优先从 sparsepck 加载，散落的 `.gdc` 被忽略。修改 GDScript 后必须重新导出 sparsepck，否则运行旧版代码
+- **headless 导出不含 AAR**：`godot --headless --export-debug` 不加载 EditorPlugin，`export_plugin.gd` 的 `_get_android_libraries()` 不被调用，AAR 不会自动注入 Gradle 项目。必须手动放 AAR 到 `libs/debug/`
+- **Android singleton has_method 不可靠**：`Engine.get_singleton()` 返回的 Android 插件对象不支持 `has_method()` 检测，必须按平台硬判断解码器类型（`OS.has_feature("android")` → streaming）
+- **builds/ 目录需 .gdignore**：项目内的 `builds/` 和 `build/` 目录必须放空 `.gdignore` 文件，否则 Godot 把构建产物当项目资源导入，导出时产生递归嵌套
+
+### iOS 构建流程
+
+（待补充）
+
 ## 注意事项
 
 - **VP9 Alpha 解码**：必须用 `-c:v libvpx-vp9` 解码器，FFmpeg 默认 VP9 解码器会丢弃 alpha side data
 - **偶数对齐**：binpack 的 x/y/w/h 全部偶数对齐，避免 yuv420p 色度子采样偏移
 - **Straight Alpha**：双轨模式下 RGB 帧保留原始颜色值，不乘 alpha（避免 premultiplied 亮度偏暗）
-- **移动端**：VP9 解码由 CPU 完成，建议在加载画面预解码常用特效
+- **移动端解码**：iOS 用 H.264（AVFoundation 原生），Android 用 VP9（MediaCodec 原生），macOS 用 FFmpeg 静态链接
+- **原始视频剔除**：打包时双轨视频放入 PCK，原始带 alpha 的源视频必须从包体中剔除
 
 ## License
 
