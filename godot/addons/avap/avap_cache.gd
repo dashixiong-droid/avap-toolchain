@@ -1,3 +1,4 @@
+@tool
 ## AVAP 动画缓存（Autoload 单例）
 ## 封装原生 AVAPDecoder，提供全局访问点。
 ##

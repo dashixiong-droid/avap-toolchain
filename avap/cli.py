@@ -52,6 +52,7 @@ def cmd_pack(args: argparse.Namespace) -> None:
     atlas_size = args.atlas_size
     fps = args.fps
     dual_track = args.dual_track
+    output_prefix = args.output_prefix
 
     from metadata_schema import EncodeOptions
     encode_opts = EncodeOptions(
@@ -82,52 +83,49 @@ def cmd_pack(args: argparse.Namespace) -> None:
     print("[3/3] 编码视频...")
     encoder = VideoEncoder()
     for atlas in metadata.atlases:
-        frames_dir = str(Path(output_dir) / f"atlas_{atlas.index:03d}")
+        prefix = output_prefix if output_prefix else f"atlas_{atlas.index:03d}"
+        frames_dir = str(Path(output_dir) / prefix)
 
         if dual_track:
-            # 双轨编码: RGB 视频 + Alpha 灰度视频
-            rgb_path = str(Path(output_dir) / f"atlas_{atlas.index:03d}.webm")
-            alpha_path = str(Path(output_dir) / f"atlas_{atlas.index:03d}_alpha.webm")
-
-            atlas.video_file = f"atlas_{atlas.index:03d}.webm"
-            atlas.alpha_video_file = f"atlas_{atlas.index:03d}_alpha.webm"
+            rgb_path = str(Path(output_dir) / f"{prefix}.webm")
+            alpha_path = str(Path(output_dir) / f"{prefix}_alpha.webm")
+            atlas.video_file = f"{prefix}.webm"
+            atlas.alpha_video_file = f"{prefix}_alpha.webm"
             atlas.encode_options = encode_opts
 
             def _progress(p: float) -> None:
                 pct = int(p * 100)
-                print(f"\r  atlas_{atlas.index}: {pct}%", end="", flush=True)
+                print(f"\r  {prefix}: {pct}%", end="", flush=True)
 
             rgb_result, alpha_result = encoder.encode_dual(
                 frames_dir, rgb_path, alpha_path, fps=fps,
                 options=encode_opts, on_progress=_progress,
             )
             total_size = rgb_result.file_size + alpha_result.file_size
-            print(f"\r  atlas_{atlas.index}: 完成 (RGB {rgb_result.file_size/1024:.1f}KB + "
+            print(f"\r  {prefix}: 完成 (RGB {rgb_result.file_size/1024:.1f}KB + "
                   f"Alpha {alpha_result.file_size/1024:.1f}KB = {total_size/1024:.1f}KB, "
                   f"{rgb_result.frame_count}帧, {rgb_result.duration_seconds:.2f}s)")
         else:
-            # 单轨编码: RGBA 视频 (yuva420p)
-            video_path = str(Path(output_dir) / f"atlas_{atlas.index:03d}.webm")
-
-            atlas.video_file = f"atlas_{atlas.index:03d}.webm"
+            video_path = str(Path(output_dir) / f"{prefix}.webm")
+            atlas.video_file = f"{prefix}.webm"
             atlas.encode_options = encode_opts
 
             def _progress(p: float) -> None:
                 pct = int(p * 100)
-                print(f"\r  atlas_{atlas.index}: {pct}%", end="", flush=True)
+                print(f"\r  {prefix}: {pct}%", end="", flush=True)
 
             result = encoder.encode(
                 frames_dir, video_path, fps=fps,
                 options=encode_opts, on_progress=_progress,
             )
-            print(f"\r  atlas_{atlas.index}: 完成 ({result.file_size / 1024:.1f} KB, "
+            print(f"\r  {prefix}: 完成 ({result.file_size / 1024:.1f} KB, "
                   f"{result.frame_count}帧, {result.duration_seconds:.2f}s)")
 
-        # 清理临时帧目录
         shutil.rmtree(frames_dir, ignore_errors=True)
 
-    # 重新保存元数据
-    metadata.save(str(Path(output_dir) / "avap_metadata.json"))
+    # 重新保存元数据，文件名用 prefix
+    meta_name = f"{output_prefix}.json" if output_prefix else "avap_metadata.json"
+    metadata.save(str(Path(output_dir) / meta_name))
     mode_str = "双轨(灰阶)" if dual_track else "单轨(yuva420p)"
     print(f"\n打包完成 [{mode_str}]: {output_dir}")
 
@@ -205,6 +203,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_pack.add_argument("--speed", type=int, default=0, help="VP9 编码速度 0-8 (默认: 0=最慢最高质量)")
     p_pack.add_argument("--threads", type=int, default=4, help="编码线程数 (默认: 4)")
     p_pack.add_argument("--dual-track", action="store_true", help="使用灰阶双轨编码 (RGB + Alpha 分离)")
+    p_pack.add_argument("--output-prefix", default=None, help="输出文件名前缀 (默认: atlas_NNN)")
     p_pack.set_defaults(func=cmd_pack)
 
     # decode

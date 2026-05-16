@@ -4,8 +4,8 @@
     {
       "index": 0,
       "video_file": "atlas_000.webm",
-      "width": 1024,
-      "height": 1024,
+      "width": 2048,
+      "height": 2048,
       "fps": 30,
       "total_frames": 40,
       "encode_options": {
@@ -22,8 +22,8 @@
           "start_frame": 0,
           "end_frame": 11,
           "rect": {
-            "x": 288,
-            "y": 520,
+            "x": 0,
+            "y": 1512,
             "w": 64,
             "h": 64
           },
@@ -33,7 +33,7 @@
           },
           "frame_count": 12,
           "fps": 30.0,
-          "original_name": "examples/assets/sparkle"
+          "original_name": "godot/assets/sparkle"
         },
         "slash": {
           "atlas_index": 0,
@@ -51,7 +51,7 @@
           },
           "frame_count": 18,
           "fps": 30.0,
-          "original_name": "examples/assets/slash"
+          "original_name": "godot/assets/slash"
         },
         "shield": {
           "atlas_index": 0,
@@ -69,15 +69,15 @@
           },
           "frame_count": 20,
           "fps": 30.0,
-          "original_name": "examples/assets/shield"
+          "original_name": "godot/assets/shield"
         },
         "fire_ring": {
           "atlas_index": 0,
           "start_frame": 0,
           "end_frame": 23,
           "rect": {
-            "x": 320,
-            "y": 0,
+            "x": 0,
+            "y": 1320,
             "w": 192,
             "h": 192
           },
@@ -87,15 +87,15 @@
           },
           "frame_count": 24,
           "fps": 30.0,
-          "original_name": "examples/assets/fire_ring"
+          "original_name": "godot/assets/fire_ring"
         },
         "explosion": {
           "atlas_index": 0,
           "start_frame": 0,
           "end_frame": 29,
           "rect": {
-            "x": 256,
-            "y": 608,
+            "x": 0,
+            "y": 864,
             "w": 256,
             "h": 256
           },
@@ -105,15 +105,15 @@
           },
           "frame_count": 30,
           "fps": 30.0,
-          "original_name": "examples/assets/explosion"
+          "original_name": "godot/assets/explosion"
         },
         "heal_effect": {
           "atlas_index": 0,
           "start_frame": 0,
           "end_frame": 29,
           "rect": {
-            "x": 288,
-            "y": 320,
+            "x": 0,
+            "y": 1120,
             "w": 200,
             "h": 200
           },
@@ -123,7 +123,7 @@
           },
           "frame_count": 30,
           "fps": 30.0,
-          "original_name": "examples/assets/heal_effect"
+          "original_name": "godot/assets/heal_effect"
         },
         "aura_loop": {
           "atlas_index": 0,
@@ -141,7 +141,7 @@
           },
           "frame_count": 40,
           "fps": 30.0,
-          "original_name": "examples/assets/aura_loop"
+          "original_name": "godot/assets/aura_loop"
         }
       },
       "alpha_video_file": "atlas_000_alpha.webm"
